@@ -1,0 +1,73 @@
+project:
+  name: my-app
+  language: python          # preset: python, javascript, typescript, java, go
+
+ollama:
+  host: http://localhost:11434
+  model: qwen2.5-coder:3b
+  timeout: 300
+  num_ctx: 4096              # context window (lower = faster)
+
+pipeline:
+  fail_fast: true
+  stages:
+    - commit
+    - lint
+    - security
+    - review
+    - tracker
+    - test
+    - build
+    - deploy
+
+stages:
+  commit:
+    diff_target: HEAD~1
+
+  lint:
+    tools:
+      - command: ruff check .
+        name: ruff
+
+  security:
+    tools:
+      - command: python -m bandit -r . -f json --quiet
+        name: bandit
+      - command: python -m pip_audit --format=json
+        name: pip-audit
+    ai_review: true
+    fail_on_critical: true
+
+  review:
+    focus:
+      - security
+      - performance
+    max_files: 20
+    max_diff_lines: 3000
+
+  test:
+    command: pytest --tb=short -q
+
+  build:
+    dockerfile: Dockerfile
+    image_name: my-app
+    tag: latest
+
+  deploy:
+    compose_file: docker-compose.yml
+    service: app
+
+reports:
+  output_dir: .convaier/reports
+  formats:
+    - markdown
+    - json
+
+# Интеграция с YouGile (опционально)
+# yougile:
+#   enabled: false
+#   base_url: https://yougile.com/api-v2
+#   token: your-api-token
+#   column_id: "uuid-колонки-куда-создавать-задачи"
+#   min_severity: warning   # critical / warning / info / suggestion
+#   timeout: 30

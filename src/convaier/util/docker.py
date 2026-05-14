@@ -5,6 +5,24 @@ from pathlib import Path
 from convaier.util.proc import RunResult, run_command
 
 
+def compose_up_ssh(
+    host: str,
+    user: str,
+    key_file: str,
+    remote_path: str,
+    compose_file: str,
+    service: str | None = None,
+) -> RunResult:
+    remote_cmd = f"cd {remote_path} && docker compose -f {compose_file} up -d"
+    if service:
+        remote_cmd += f" {service}"
+    cmd = ["ssh"]
+    if key_file:
+        cmd += ["-i", str(Path(key_file).expanduser())]
+    cmd += ["-o", "StrictHostKeyChecking=no", f"{user}@{host}", remote_cmd]
+    return run_command(cmd, timeout=180)
+
+
 def build_image(
     cwd: Path,
     dockerfile: str = "Dockerfile",

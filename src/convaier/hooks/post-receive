@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# convaier post-receive hook for Gogs
+# Установка: скопировать этот файл в <gogs_repo_path>/hooks/post-receive
+# и выдать права: chmod +x post-receive
+# Либо использовать команду: convaier hook install
+
+set -uo pipefail
+
+CONVAIER_CONFIG="${CONVAIER_CONFIG:-convaier.yml}"
+CONVAIER_STAGES="${CONVAIER_STAGES:-}"
+CONVAIER_LOG_DIR="${CONVAIER_LOG_DIR:-.convaier/hooks}"
+
+mkdir -p "$CONVAIER_LOG_DIR"
+LOGFILE="$CONVAIER_LOG_DIR/$(date +%Y%m%dT%H%M%S).log"
+
+while read -r oldrev newrev refname; do
+    branch="${refname#refs/heads/}"
+    echo "[convaier] push to branch: $branch (${newrev:0:8})" | tee -a "$LOGFILE"
+
+    CMD="convaier run --config $CONVAIER_CONFIG"
+
+    if [ -n "$CONVAIER_STAGES" ]; then
+        CMD="$CMD --stages $CONVAIER_STAGES"
+    fi
+
+    echo "[convaier] running: $CMD" | tee -a "$LOGFILE"
+
+    if $CMD >> "$LOGFILE" 2>&1; then
+        echo "[convaier] pipeline completed successfully" | tee -a "$LOGFILE"
+    else
+        echo "[convaier] pipeline finished with issues, see $LOGFILE" | tee -a "$LOGFILE"
+    fi
+done

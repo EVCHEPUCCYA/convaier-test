@@ -13,79 +13,165 @@ log = logging.getLogger("convaier")
 
 def _render_markdown(ctx: PipelineContext) -> str:
     lines = [
-        "# Convaier Pipeline Report",
-        f"**Project**: {ctx.config.project_name} | "
-        f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
-        f"**Result**: {'PASSED' if not ctx.errors else 'FAILED'}",
+        "# Отчёт convaier",
+        f"**Проект**: {ctx.config.project_name} | "
+        f"**Дата**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
+        f"**Результат**: {'УСПЕШНО' if not ctx.errors else 'ОШИБКА'}",
         "",
     ]
 
     # Timings
     if ctx.timings:
-        lines.append("## Timings")
+        lines.append("## Время выполнения")
         for stage, t in ctx.timings.items():
             lines.append(f"- **{stage}**: {t:.1f}s")
         lines.append("")
 
     # Commit
     if ctx.changed_files:
-        lines.append("## Commit")
-        lines.append(f"- Changed files: {len(ctx.changed_files)}")
+        mode = " (полный скан)" if ctx.full_scan else ""
+        lines.append("## Изменения")
+        lines.append(f"- Файлов{mode}: {len(ctx.changed_files)}")
         for f in ctx.changed_files[:20]:
             lines.append(f"  - `{f}`")
         lines.append("")
 
     # Lint
     if ctx.lint_results:
-        lines.append("## Lint")
-        lines.append("| Tool | File | Line | Message |")
+        lines.append("## Линтер")
+        lines.append("| Инструмент | Файл | Строка | Сообщение |")
         lines.append("|------|------|------|---------|")
         for issue in ctx.lint_results[:50]:
             lines.append(f"| {issue.tool} | `{issue.file}` | {issue.line} | {issue.message} |")
         lines.append("")
 
+    # Security
+    if ctx.security_issues or ctx.security_ai_comments:
+        lines.append("## Безопасность")
+        if ctx.security_issues:
+            lines.append("### Инструменты")
+            lines.append("| Инструмент | Файл | Строка | Уровень | CWE | Сообщение |")
+            lines.append("|------|------|------|----------|-----|---------|")
+            for issue in ctx.security_issues[:50]:
+                cwe_raw = issue.cwe or ""
+                cwe = f"CWE-{cwe_raw.removeprefix('CWE-')}" if cwe_raw else "-"
+                lines.append(f"| {issue.tool} | `{issue.file}` | {issue.line} | {issue.severity} | {cwe} | {issue.message} |")
+            lines.append("")
+        if ctx.security_ai_comments:
+            lines.append("### AI-анализ")
+            for c in ctx.security_ai_comments:
+                loc = f"`{c.file}:{c.line}`" if c.line else f"`{c.file}`"
+                lines.append(f"#### {loc} [{c.severity}]")
+                lines.append(f"> {c.message}")
+                if c.reason:
+                    lines.append(f"> **Причина:** {c.reason}")
+                if c.fix:
+                    lines.append(f"> **Как исправить:** {c.fix}")
+                lines.append("")
+        lines.append("")
+
     # Review
     if ctx.review_comments:
-        lines.append("## Code Review (AI)")
+        lines.append("## Ревью кода (AI)")
         for c in ctx.review_comments:
-            lines.append(f"### `{c.file}:{c.line}` [{c.severity}]")
+            loc = f"`{c.file}:{c.line}`" if c.line else f"`{c.file}`"
+            lines.append(f"### {loc} [{c.severity}]")
             lines.append(f"> {c.message}")
+            if c.reason:
+                lines.append(f"> **Причина:** {c.reason}")
+            if c.fix:
+                lines.append(f"> **Как исправить:** {c.fix}")
             lines.append("")
+
+    # Metrics (legacy — сохраняем для обратной совместимости)
+    if ctx.metrics_result:
+        mr = ctx.metrics_result
+        lines.append("## Метрики кода")
+        lines.append(f"- **Средняя сложность**: {mr.avg_complexity}")
+        lines.append(f"- **Средний индекс сопровождаемости**: {mr.avg_maintainability}")
+        lines.append(f"- **Всего строк кода**: {mr.total_loc}")
+        if mr.coverage is not None:
+            lines.append(f"- **Покрытие тестами**: {mr.coverage}%")
+        lines.append("")
+        if mr.files:
+            lines.append("| Файл | Сложность | Сопровождаемость | LOC |")
+            lines.append("|------|-----------|-----------------|-----|")
+            for fm in mr.files:
+                lines.append(f"| `{fm.file}` | {fm.complexity} | {fm.maintainability} | {fm.loc} |")
+            lines.append("")
+        if mr.ai_recommendations:
+            lines.append("### Рекомендации AI")
+            for r in mr.ai_recommendations:
+                lines.append(f"- {r}")
+            lines.append("")
+
+    # Tracker (YouGile)
+    if ctx.tracker_results is not None:
+        yr = ctx.tracker_results
+        lines.append("## YouGile")
+        created = yr.get("created", [])
+        if created:
+            lines.append(f"- Создано задач: {len(created)}")
+            for task in created[:20]:
+                lines.append(f"  - [{task.get('id', '?')}] {task.get('title', '')}")
+        skipped = yr.get("skipped_dedup", 0)
+        if skipped:
+            lines.append(f"- Пропущено (дубли): {skipped}")
+        errs = yr.get("errors", [])
+        if errs:
+            lines.append(f"- Ошибок: {len(errs)}")
+            for e in errs[:5]:
+                lines.append(f"  - {e}")
+        if not created and not skipped and not errs:
+            lines.append("- Нет новых задач")
+        lines.append("")
 
     # Tests
     if ctx.test_results:
         tr = ctx.test_results
-        lines.append("## Tests")
-        lines.append(f"- {tr.passed} passed, {tr.failed} failed, {tr.skipped} skipped")
+        lines.append("## Тесты")
+        lines.append(f"- {tr.passed} прошло, {tr.failed} упало, {tr.skipped} пропущено")
         if tr.duration:
-            lines.append(f"- Duration: {tr.duration:.1f}s")
+            lines.append(f"- Время: {tr.duration:.1f}s")
+        if tr.ai_analysis:
+            lines.append("")
+            lines.append("### AI-анализ падений")
+            for entry in tr.ai_analysis.strip().split("\n"):
+                if entry.startswith("АНАЛИЗ|"):
+                    parts = entry.split("|", 3)
+                    if len(parts) == 4:
+                        _, test_name, reason, fix = parts
+                        lines.append(f"**{test_name.strip()}**")
+                        lines.append(f"> Причина: {reason.strip()}")
+                        lines.append(f"> Как исправить: {fix.strip()}")
+                        lines.append("")
         lines.append("")
 
     # Build
     if ctx.build_result:
         br = ctx.build_result
-        status = "OK" if br.success else "FAILED"
-        lines.append("## Build")
-        lines.append(f"- Image: `{br.image}:{br.tag}` — {status} ({br.duration:.1f}s)")
+        status = "OK" if br.success else "ОШИБКА"
+        lines.append("## Сборка")
+        lines.append(f"- Образ: `{br.image}:{br.tag}` — {status} ({br.duration:.1f}s)")
         lines.append("")
 
     # Deploy
     if ctx.deploy_result:
         dr = ctx.deploy_result
-        status = "OK" if dr.success else "FAILED"
-        lines.append("## Deploy")
-        lines.append(f"- Service `{dr.service}` — {status}")
+        status = "OK" if dr.success else "ОШИБКА"
+        lines.append("## Деплой")
+        lines.append(f"- Сервис `{dr.service}` — {status}")
         lines.append("")
 
     # Errors
     if ctx.errors:
-        lines.append("## Errors")
+        lines.append("## Ошибки")
         for err in ctx.errors:
             lines.append(f"- **{err.stage}**: {err.error}")
         lines.append("")
 
     lines.append("---")
-    lines.append(f"*Generated by convaier v0.1.0*")
+    lines.append("*Создано автоматически утилитой convaier*")
     return "\n".join(lines)
 
 

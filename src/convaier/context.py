@@ -21,6 +21,36 @@ class ReviewComment:
     line: int
     message: str
     severity: str = "info"
+    reason: str = ""
+    fix: str = ""
+
+
+@dataclass
+class SecurityIssue:
+    tool: str
+    file: str
+    line: int
+    severity: str
+    message: str
+    cwe: str = ""
+
+
+@dataclass
+class FileMetrics:
+    file: str
+    complexity: float = 0.0
+    maintainability: float = 0.0
+    loc: int = 0
+
+
+@dataclass
+class MetricsResult:
+    files: list[FileMetrics] = field(default_factory=list)
+    avg_complexity: float = 0.0
+    avg_maintainability: float = 0.0
+    total_loc: int = 0
+    coverage: float | None = None
+    ai_recommendations: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -30,6 +60,7 @@ class TestResults:
     skipped: int = 0
     duration: float = 0.0
     output: str = ""
+    ai_analysis: str = ""
 
 
 @dataclass
@@ -46,6 +77,8 @@ class DeployResult:
     service: str = ""
     success: bool = False
     output: str = ""
+    duration: float = 0.0
+    target: str = "local"
 
 
 @dataclass
@@ -60,6 +93,7 @@ class PipelineContext:
     config: Config
 
     # commit stage
+    full_scan: bool = False
     git_diff: str = ""
     changed_files: list[str] = field(default_factory=list)
 
@@ -70,6 +104,16 @@ class PipelineContext:
     # review stage
     review_comments: list[ReviewComment] = field(default_factory=list)
 
+    # security stage
+    security_issues: list[SecurityIssue] = field(default_factory=list)
+    security_ai_comments: list[ReviewComment] = field(default_factory=list)
+
+    # metrics stage
+    metrics_result: MetricsResult | None = None
+
+    # tracker stage (YouGile)
+    tracker_results: dict | None = None
+
     # test stage
     test_results: TestResults | None = None
 
@@ -78,6 +122,9 @@ class PipelineContext:
 
     # deploy stage
     deploy_result: DeployResult | None = None
+
+    # environment (--env flag)
+    env: str = ""
 
     # errors & timings
     errors: list[StageError] = field(default_factory=list)
