@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "convaier.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "convaier.name" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "convaier.name" . }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve", "--config", "/etc/convaier/convaier-server.yml"]
+          ports:
+            - name: http
+              containerPort: 8765
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/convaier
+            - name: workspace-volume
+              mountPath: {{ .Values.config.workspace }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "convaier.fullname" . }}-config
+        - name: workspace-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "convaier.fullname" . }}-config
+data:
+  convaier-server.yml: |
+    server:
+      host: 0.0.0.0
+      port: 8765
+      workspace: {{ .Values.config.workspace }}
+      log_level: {{ .Values.config.logLevel }}
+    ollama:
+      host: {{ .Values.config.ollamaHost }}
