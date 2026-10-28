@@ -1,0 +1,19 @@
+replicaCount: 1
+image:
+  repository: convaier
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 8765
+config:
+  workspace: /var/lib/convaier/repos
+  logLevel: info
+  ollamaHost: "http://ollama.ollama.svc.cluster.local:11434"
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
